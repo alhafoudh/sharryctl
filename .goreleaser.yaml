@@ -30,10 +30,18 @@ changelog:
 
 homebrew_casks:
   - name: sharryctl
+    # Pushed over SSH with the tap's deploy key (write access to that repo alone),
+    # the same way tessaro-os publishes alhafoudh/homebrew-tessaro.
     repository:
       owner: alhafoudh
       name: homebrew-sharryctl
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      branch: main
+      git:
+        url: git@github.com:alhafoudh/homebrew-sharryctl.git
+        private_key: "{{ .Env.HOMEBREW_TAP_DEPLOY_KEY }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
     directory: Casks
     homepage: https://github.com/alhafoudh/sharryctl
     description: Command-line client and Go SDK for the Sharry workplace platform API
