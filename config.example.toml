@@ -1,0 +1,18 @@
+# Copy to ~/.config/sharry/config.toml (chmod 600) or use `sharryctl config tenants add`.
+# Never commit real tenant credentials.
+
+default_tenant = "example"
+
+[tenants.example]
+# Subdomain of https://<slug>.sharryapp.com is the table key above.
+application_token = ""   # also sent as client_id during login
+api_secret = ""          # HMAC key for the Request-Sign header
+# api_version = "v8"
+# language = "en"
+# platform = "Android"
+# app_version = "4.15.0"
+# app_name = "Sharry"          # used in the generated User-Agent
+# package = "eu.sharry.swp"    # used in the generated User-Agent
+# build = "1"
+# user_agent = ""              # full override
+# default_profile = "you@example.com"

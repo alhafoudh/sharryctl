@@ -1,0 +1,47 @@
+version: 2
+
+project_name: sharryctl
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - main: ./cmd/sharryctl
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/alhafoudh/sharryctl/internal/cli.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [README.md, LICENSE]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+
+homebrew_casks:
+  - name: sharryctl
+    repository:
+      owner: alhafoudh
+      name: homebrew-sharryctl
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/alhafoudh/sharryctl
+    description: Command-line client and Go SDK for the Sharry workplace platform API
+    license: MIT
+    # Binaries are not notarized; drop the quarantine bit so macOS lets them run.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/sharryctl"]
+          end

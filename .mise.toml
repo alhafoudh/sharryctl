@@ -1,0 +1,13 @@
+[tools]
+go = "1.27.1"
+ruby = "3.4.5"
+goreleaser = "latest"
+
+[tasks.test]
+run = "go test ./..."
+
+[tasks.build]
+run = "go build -o bin/sharryctl ./cmd/sharryctl"
+
+[tasks.lint]
+run = "go vet ./..."

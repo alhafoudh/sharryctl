@@ -1,0 +1,490 @@
+openapi: 3.0.3
+info:
+  title: Sharry Workplace API
+  version: v8
+  description: |
+    Unofficial specification of the Sharry workplace platform API as used by `sharryctl`.
+
+    Every request must carry the application-level headers `Application-Token` and
+    `Request-Sign`, where
+
+        Request-Sign = lowercase_hex(HMAC_SHA256(api_secret, fullURL + "|" + rawBody))
+
+    `fullURL` is the exact URL including the query string; `rawBody` is empty for
+    requests without a body. Authenticated endpoints additionally need `Access-Token`.
+
+    When served by `sharryctl swagger serve`, "Try it out" calls go through a local
+    proxy that adds signing and the logged-in user's Access-Token automatically.
+  license:
+    name: MIT
+servers:
+  - url: https://{tenant}.sharryapp.com/api/{version}
+    variables:
+      tenant:
+        default: example
+        description: Tenant slug (subdomain)
+      version:
+        default: v8
+security:
+  - applicationToken: []
+    requestSign: []
+tags:
+  - name: auth
+  - name: parking
+  - name: access
+  - name: users
+paths:
+  /token:
+    post:
+      tags: [auth]
+      summary: Authentication, dispatched by grant_type
+      description: |
+        - `check_user`: identity check
+        - `code_challenge`: email a login code
+        - `code_challenge_resend`: resend the code
+        - `code_challenge_response`: exchange the code for tokens
+
+        Rate limited (about 10 requests per window), see `x-ratelimit-*` headers.
+      operationId: token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenRequest' }
+      responses:
+        '200':
+          description: Identity info or tokens depending on grant_type
+          headers:
+            x-ratelimit-limit: { schema: { type: integer } }
+            x-ratelimit-remaining: { schema: { type: integer } }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/IdentityResponse'
+                  - $ref: '#/components/schemas/LoginResponse'
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /external-auths/response:
+    get:
+      tags: [auth]
+      summary: Refresh the access token
+      operationId: refreshToken
+      parameters:
+        - name: uuid
+          in: query
+          required: true
+          description: The refresh_token
+          schema: { type: string }
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RefreshResponse' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: The logged-in user's profile
+      operationId: getMe
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /parking/license-plates:
+    get:
+      tags: [parking]
+      summary: List the user's license plates
+      operationId: listLicensePlates
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      responses:
+        '200':
+          description: Plates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  license_plates:
+                    type: array
+                    items: { $ref: '#/components/schemas/LicensePlate' }
+        '401': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [parking]
+      summary: Add a license plate
+      operationId: addLicensePlate
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LicensePlateRequest' }
+      responses:
+        '200':
+          description: Created plate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created: { type: boolean }
+                  license_plate: { $ref: '#/components/schemas/LicensePlate' }
+        '422': { $ref: '#/components/responses/Error' }
+  /parking/license-plates/{licensePlateUuid}:
+    parameters:
+      - name: licensePlateUuid
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [parking]
+      summary: Change a license plate
+      operationId: updateLicensePlate
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LicensePlateRequest' }
+      responses:
+        '200':
+          description: Updated plate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: boolean }
+                  license_plate: { $ref: '#/components/schemas/LicensePlate' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [parking]
+      summary: Delete a license plate
+      operationId: deleteLicensePlate
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      responses:
+        '200': { description: Deleted }
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /parking/companies/{companyUuid}/spots:
+    get:
+      tags: [parking]
+      summary: Company parking spots
+      operationId: listCompanyParkingSpots
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: companyUuid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /parking/companies/{companyUuid}/recommendations:
+    get:
+      tags: [parking]
+      summary: Recommended parking spots for a time range
+      operationId: listParkingRecommendations
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: companyUuid, in: path, required: true, schema: { type: string } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /parking/users/{userUuid}/reservations:
+    parameters:
+      - { name: userUuid, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [parking]
+      summary: List the user's parking reservations
+      operationId: listParkingReservations
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+    post:
+      tags: [parking]
+      summary: Create a parking reservation
+      operationId: createParkingReservation
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [spot_uuid, from, to]
+              properties:
+                spot_uuid: { type: string, description: From the recommendations endpoint }
+                from: { type: string, format: date-time }
+                to: { type: string, format: date-time }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /parking/users/{userUuid}/reservations/{parkingReservationUuid}/release:
+    post:
+      tags: [parking]
+      summary: Release the spot for part of a reservation
+      operationId: releaseParkingReservation
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: userUuid, in: path, required: true, schema: { type: string } }
+        - { name: parkingReservationUuid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                release_from: { type: string, format: date-time }
+                release_to: { type: string, format: date-time }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /parking/users/{userUuid}/reservations/{parkingReservationUuid}:
+    delete:
+      tags: [parking]
+      summary: Cancel a parking reservation
+      operationId: cancelParkingReservation
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: userUuid, in: path, required: true, schema: { type: string } }
+        - { name: parkingReservationUuid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Cancelled }
+        '204': { description: Cancelled }
+
+  /access/users/{user}/badges:
+    parameters:
+      - { name: user, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [access]
+      summary: List access badges
+      operationId: listBadges
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+    post:
+      tags: [access]
+      summary: Grant a badge
+      operationId: grantBadge
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true, description: Issue-card request }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /access/users/{user}/badges/{badge}:
+    delete:
+      tags: [access]
+      summary: Revoke a badge
+      operationId: revokeBadge
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+        - { name: badge, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /access/users/{user}/badges/{badge}/{state}:
+    patch:
+      tags: [access]
+      summary: Change badge state
+      operationId: setBadgeState
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+        - { name: badge, in: path, required: true, schema: { type: string } }
+        - { name: state, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /users/{user}/badge-formats:
+    get:
+      tags: [access]
+      summary: Card formats
+      operationId: listCardFormats
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+        - name: 'filter[site_ids][]'
+          in: query
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: true
+        - { name: 'filter[type]', in: query, schema: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /users/{user}/devices/{device}:
+    put:
+      tags: [users]
+      summary: Change device state
+      operationId: setDeviceState
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: user, in: path, required: true, schema: { type: string } }
+        - { name: device, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true, description: Change-device-state request }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+  /users/{userId}/verification:
+    post:
+      tags: [users]
+      summary: Submit identity verification
+      operationId: submitVerification
+      security: [{ applicationToken: [], requestSign: [], accessToken: [] }]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verification]
+              properties:
+                verification: { type: object, additionalProperties: true }
+      responses:
+        '200': { $ref: '#/components/responses/AnyJSON' }
+
+components:
+  securitySchemes:
+    applicationToken:
+      type: apiKey
+      in: header
+      name: Application-Token
+    requestSign:
+      type: apiKey
+      in: header
+      name: Request-Sign
+      description: HMAC-SHA256 of fullURL|body keyed by the tenant API secret (lowercase hex)
+    accessToken:
+      type: apiKey
+      in: header
+      name: Access-Token
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    AnyJSON:
+      description: JSON response (schema not yet confirmed)
+      content:
+        application/json:
+          schema: {}
+  schemas:
+    TokenRequest:
+      type: object
+      required: [email, client_id, grant_type]
+      properties:
+        email: { type: string, format: email }
+        client_id: { type: string, description: The tenant Application Token }
+        grant_type:
+          type: string
+          enum: [check_user, code_challenge, code_challenge_resend, code_challenge_response]
+        code: { type: string }
+        location_id: { oneOf: [{ type: integer }, { type: string }] }
+        company_id: { oneOf: [{ type: integer }, { type: string }] }
+        agree_with_privacy: { type: boolean }
+    IdentityResponse:
+      type: object
+      properties:
+        user_status: { type: string }
+        companies: { type: array, items: {} }
+        location_id: {}
+        site_id: {}
+        sso_link: { type: string, nullable: true }
+        sso_provider: { type: string, nullable: true }
+    LoginResponse:
+      type: object
+      properties:
+        user_status: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+        access_token: { type: string, description: 'JWT, about 30 days' }
+        refresh_token: { type: string }
+        expires: { type: string, format: date-time }
+        user_id: {}
+        company_id: {}
+        company_uuid: { type: string }
+    RefreshResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        expires: { type: string, format: date-time }
+        refresh_token: { type: string }
+    LicensePlate:
+      type: object
+      properties:
+        uuid: { type: string }
+        license_plate: { type: string }
+        default: { type: boolean, nullable: true }
+    LicensePlateRequest:
+      type: object
+      properties:
+        license_plate: { type: string }
+        default: { type: boolean }
+    Company:
+      type: object
+      properties:
+        id: {}
+        uuid: { type: string }
+        parent_id: {}
+        parent_uuid: { type: string, nullable: true }
+        name: { type: string }
+        annotation: { type: string, nullable: true }
+        category: {}
+        content: { type: string, nullable: true }
+        content_original: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        url: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        facebook: { type: string, nullable: true }
+        linkedin: { type: string, nullable: true }
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              uuid: { type: string }
+              url: { type: string }
+              thumbnail_pattern: { type: string }
+    User:
+      type: object
+      properties:
+        id: {}
+        uuid: { type: string }
+        status: { type: string }
+        invitation_mail_sent_at: { type: string, nullable: true }
+        access_invitation_mail_sent_at: { type: string, nullable: true }
+        company: { $ref: '#/components/schemas/Company' }
+        can_edit_email: { type: boolean }
+        anonymize: { type: boolean }
+        has_photo: { type: boolean }
+        me: { type: boolean }
+        image: {}
+        tags: {}
+        virtual_card_request_status: {}
+        updating_access_role: {}
+        email: { type: string }
+        fullname: { type: string }
+        phone: { type: string, nullable: true }
+        name: { type: string }
+        surname: { type: string }
+        has_any_admin_role: { type: boolean }
+        permissions: {}
+        roles: {}
+        agreements: {}
+        profession: {}
+        building: {}
+        location: {}

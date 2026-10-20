@@ -1,0 +1,5 @@
+/bin/
+/dist/
+*.local.toml
+config.toml
+.env
